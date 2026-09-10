@@ -180,6 +180,11 @@
 			return;
 		}
 
+		if (httpStatus === 429) {
+			setStatus(statusEl, t('rateLimited', 'Has realizado demasiadas consultas. Espera unos minutos e inténtalo de nuevo.'), 'rate-limited');
+			return;
+		}
+
 		setStatus(statusEl, t('error', 'No fue posible completar la consulta en este momento. Intenta nuevamente más tarde.'), 'error');
 	}
 

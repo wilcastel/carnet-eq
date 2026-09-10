@@ -63,6 +63,7 @@ final class ShortcodeRenderer
                     'loading' => \__('Consultando…', 'carnet-equidad'),
                     'notFound' => \__('No se encontró información para el documento ingresado.', 'carnet-equidad'),
                     'error' => \__('No fue posible completar la consulta en este momento. Intenta nuevamente más tarde.', 'carnet-equidad'),
+                    'rateLimited' => \__('Has realizado demasiadas consultas. Espera unos minutos e inténtalo de nuevo.', 'carnet-equidad'),
                     'invalid' => \__('Ingresa un número de documento válido (6 a 11 dígitos).', 'carnet-equidad'),
                     'selectPrompt' => \__('Selecciona la póliza que deseas consultar:', 'carnet-equidad'),
                     'continue' => \__('Continuar', 'carnet-equidad'),

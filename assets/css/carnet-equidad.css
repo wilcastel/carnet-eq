@@ -130,7 +130,8 @@
 }
 
 .carnet-equidad__status[data-state="not-found"],
-.carnet-equidad__status[data-state="invalid"] {
+.carnet-equidad__status[data-state="invalid"],
+.carnet-equidad__status[data-state="rate-limited"] {
 	border-color: #efd9a8;
 	background: #fdf6e7;
 	color: #8a6a12;

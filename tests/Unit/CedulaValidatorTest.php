@@ -72,4 +72,47 @@ final class CedulaValidatorTest extends TestCase
         self::assertNull($this->validator->normalize('123'));
         self::assertNull($this->validator->normalize('not-a-number'));
     }
+
+    public function testCustomBoundsViaConstructor(): void
+    {
+        $validator = new CedulaValidator(8, 10);
+
+        self::assertTrue($validator->isValid('123456789'));       // 9 digits
+        self::assertSame('123456789', $validator->normalize('123.456.789'));
+
+        self::assertFalse($validator->isValid('1234567'));        // 7 digits
+        self::assertFalse($validator->isValid('12345678901'));    // 11 digits
+        self::assertNull($validator->normalize('1234567'));
+    }
+
+    public function testPathologicallyLongInputIsRejectedBeforeTheRegexRuns(): void
+    {
+        $input = str_repeat('1', 129);
+
+        self::assertSame('', $this->validator->clean($input));
+        self::assertFalse($this->validator->isValid($input));
+        self::assertNull($this->validator->normalize($input));
+    }
+
+    public function testInputOfExactly128CharactersStillGoesThroughTheRegex(): void
+    {
+        $input = str_repeat('1', 128);
+
+        // The 128-char guard is a strict "> 128" check, so this still cleans.
+        self::assertSame($input, $this->validator->clean($input));
+    }
+
+    public function testDegenerateBoundsAreCoercedSanely(): void
+    {
+        // min < 1 is treated as 1; max < min is treated as min.
+        $collapsed = new CedulaValidator(-5, -5);
+        self::assertTrue($collapsed->isValid('1'));
+        self::assertFalse($collapsed->isValid('12'));
+        self::assertFalse($collapsed->isValid(''));
+
+        // Positive but inverted bounds collapse max down to min.
+        $inverted = new CedulaValidator(10, 3);
+        self::assertTrue($inverted->isValid('1234567890'));   // 10 digits
+        self::assertFalse($inverted->isValid('123456789'));   // 9 digits
+    }
 }

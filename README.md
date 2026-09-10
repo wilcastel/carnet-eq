@@ -18,16 +18,51 @@ del servidor, y la persona elige cuál de sus registros de póliza quiere.
   - Llama a `ApiDataCarnetClient` y transforma el resultado:
     - **encontrado** → `200 { "status": "found", "asegurado": "<NOMBRE_ASEGURADO del primer registro>", "opciones": [ { "id", "poliza", "orden", "certificado", "sucursal", "vigencia_desde", "vigencia_hasta" } ] }`
     - **no encontrado** (`404` del servicio) → `200 { "status": "not_found" }`
+    - **demasiadas peticiones** → `429 { "status": "rate_limited", "message": "<mensaje>" }`,
+      con la cabecera `Retry-After` en segundos
     - **fallo del servicio / autenticación / configuración** → `502 { "status": "error", "message": "<mensaje genérico>" }`
   - La respuesta nunca incluye datos del beneficiario ni el campo `PRIMA`.
   - `permission_callback` es `__return_true` (público) por ahora. El cliente
-    JavaScript igual envía el nonce `wp_rest`. **PENDIENTE: rate-limit + CAPTCHA
-    antes de producción.**
+    JavaScript igual envía el nonce `wp_rest`. Las peticiones están limitadas por
+    IP (ver **Límite de peticiones** más abajo). **PENDIENTE: CAPTCHA antes de
+    producción.**
 - El JavaScript del front-end envía la petición con `fetch` y representa los
   estados `loading` / `not_found` / `error` / `found`. El estado `found` muestra
   las opciones como una lista de radios (Póliza / Orden / Vigencia). El botón
   "Continuar" por ahora solo vuelca la opción elegida en un bloque de resumen y en
   `console.log` — marcado con `// TODO: next increment -> call /pdf endpoint`.
+
+## Límite de peticiones (rate limiting)
+
+`POST /wp-json/carnet/v1/consulta` aplica un límite **por IP** con algoritmo de
+**ventana fija**: se cuenta cuántas peticiones llegan desde una IP dentro de una
+ventana de tiempo; al superar el tope, las siguientes se rechazan con `429`
+(cuerpo `{ "status": "rate_limited", ... }` y cabecera `Retry-After` en segundos)
+hasta que la ventana se reinicia. El contador se guarda en un transient cuya
+clave es un hash SHA-256 truncado de la IP — la tabla de opciones **nunca**
+almacena una IP en claro. La comprobación ocurre **antes** de validar la cédula y
+antes de cualquier llamada al servicio upstream.
+
+Valores por defecto: **10 peticiones cada 600 segundos** (10 minutos).
+
+`X-Forwarded-For` **no** se usa por defecto: en una conexión directa lo controla
+quien hace la petición. En despliegues detrás de proxy / CDN, sobrescribe la IP
+con el filtro `carnet_equidad_client_ip`.
+
+### Filtros disponibles
+
+| Filtro | Valor por defecto | Forma esperada del retorno |
+| --- | --- | --- |
+| `carnet_equidad_rate_limit` | `['limit' => 10, 'window' => 600]` | Array `['limit' => int, 'window' => int]`. Se lee a la defensiva: ambos se convierten a `int` y se limitan a `>= 1`; un retorno malformado (no-array) vuelve a los valores por defecto. |
+| `carnet_equidad_client_ip` | `$_SERVER['REMOTE_ADDR']` (o `''`) | `string` con la IP del cliente. Se pasa por `sanitize_text_field()`; si queda vacía se usa `'unknown'`. |
+| `carnet_equidad_cedula_length` | `['min' => 6, 'max' => 11]` | Array `['min' => int, 'max' => int]`. Se lee a la defensiva: ambos se convierten a `int`; si `min < 1` se trata como `1` y si `max < min` se trata como `min`; un retorno malformado vuelve a los valores por defecto. |
+
+Ejemplo — subir el límite y confiar en la IP que reenvía Nginx:
+
+```php
+add_filter('carnet_equidad_rate_limit', fn () => ['limit' => 30, 'window' => 600]);
+add_filter('carnet_equidad_client_ip', fn () => $_SERVER['HTTP_X_REAL_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? '');
+```
 
 ## Arquitectura
 
@@ -47,7 +82,11 @@ Distribución orientada a *screaming* / hexagonal bajo `src/`:
 | `src/Api/PolicyOptionMapper.php` | Registro crudo → forma recortada `opciones` (puro) |
 | `src/Api/ApiClientFactory.php` | Ensambla el cliente con sus colaboradores de WP |
 | `src/Api/Exception/*` | `ConfigException`, `NotFoundException`, `AuthException`, `UpstreamException` |
-| `src/Rest/ConsultaController.php` | Registra y atiende la ruta REST |
+| `src/RateLimit/RateLimiter.php` | Ventana fija por clave (puro, sin WordPress) |
+| `src/RateLimit/RateLimitResult.php` | Objeto de valor: `allowed` / `remaining` / `retryAfter` |
+| `src/RateLimit/RateStore.php` | Interfaz de caché del contador — punto de inyección |
+| `src/RateLimit/WpTransientRateStore.php` | Implementación con transients (clave = hash de la IP) |
+| `src/Rest/ConsultaController.php` | Registra y atiende la ruta REST (incluye el rate limit) |
 | `src/Frontend/ShortcodeRenderer.php` | Shortcode + encolado condicional de assets |
 | `src/Plugin.php` | Raíz de composición (hooks) |
 
@@ -79,7 +118,7 @@ WordPress**, y eso es lo que permite probarlos de forma unitaria.
 Agrégalas **antes** de la línea `/* That's all, stop editing! */`:
 
 ```php
-define( 'CARNET_API_USER', 'user0017-LIN-0033' );      // requerida — credencial real
+define( 'CARNET_API_USER', '0017-LIN-0033' );          // requerida — credencial real (sin el prefijo "user")
 define( 'CARNET_API_PASSWORD', 'tu-clave-aqui' );       // requerida — credencial real
 define( 'CARNET_API_BASE_URL', 'http://192.168.243.194:9050' ); // opcional — este es el valor por defecto
 ```

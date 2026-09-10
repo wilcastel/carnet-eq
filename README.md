@@ -21,6 +21,9 @@ del servidor, y la persona elige cuál de sus registros de póliza quiere.
     - **demasiadas peticiones** → `429 { "status": "rate_limited", "message": "<mensaje>" }`,
       con la cabecera `Retry-After` en segundos
     - **fallo del servicio / autenticación / configuración** → `502 { "status": "error", "message": "<mensaje genérico>" }`
+  - **Todas** las respuestas incluyen ahora un campo `"ref"`: el UUID v4 de la
+    petición, que también es la clave de las filas de auditoría generadas para esa
+    llamada (ver **Auditoría** más abajo).
   - La respuesta nunca incluye datos del beneficiario ni el campo `PRIMA`.
   - `permission_callback` es `__return_true` (público) por ahora. El cliente
     JavaScript igual envía el nonce `wp_rest`. Las peticiones están limitadas por
@@ -64,6 +67,70 @@ add_filter('carnet_equidad_rate_limit', fn () => ['limit' => 30, 'window' => 600
 add_filter('carnet_equidad_client_ip', fn () => $_SERVER['HTTP_X_REAL_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? '');
 ```
 
+## Auditoría
+
+Para cumplir con Habeas Data / Ley 1581, el plugin registra **un evento
+estructurado por acción relevante** en una tabla propia
+`{$wpdb->prefix}carnet_audit` (por defecto `wp_carnet_audit`). Una fila por
+evento.
+
+### Qué se registra
+
+| Columna | Tipo | Contenido |
+| --- | --- | --- |
+| `id` | `BIGINT UNSIGNED` | Clave primaria autoincremental |
+| `request_id` | `CHAR(36)` | UUID v4, uno por petición HTTP (es el campo `ref` de la respuesta REST) |
+| `created_at` | `DATETIME` | Fecha/hora en **UTC** |
+| `ip` | `VARCHAR(45)` | La misma IP que resuelve el filtro `carnet_equidad_client_ip`, tal cual |
+| `cedula` | `VARCHAR(40)` | El documento consultado, **completo** (es la clave de auditoría según §6). Si el formato es inválido se guarda el valor crudo enviado, truncado a 40 caracteres |
+| `cod_pla` | `VARCHAR(12)` | Código de plan (por ahora siempre `"1821"`) |
+| `result` | `VARCHAR(20)` | `found`, `not_found`, `error`, `invalid` o `rate_limited` (nulo en eventos que no son consultas) |
+| `api_http` | `SMALLINT UNSIGNED` | Código HTTP del upstream cuando se conoce (`200` / `404`), nulo en otro caso |
+| `event_type` | `VARCHAR(20)` | `query`, `token_refresh` o `auth_error` |
+| `detail` | `VARCHAR(255)` | Texto corto y seguro (p. ej. `"AuthException after retry"`). **Nunca** un payload completo |
+| `poliza`, `orden`, `file_hash` | `VARCHAR` / `CHAR` | Reservadas para un incremento posterior; se crean nulas y no se pueblan todavía |
+
+Índices: `KEY` sobre `created_at` y sobre `request_id`.
+
+Eventos actuales:
+
+- `query` — una consulta terminada (o rechazada antes del upstream): se registra
+  para cada desenlace (`found` / `not_found` / `invalid` / `rate_limited` /
+  `error`). El caso `rate_limited` se registra **antes** de devolver el `429`.
+- `token_refresh` — el token del upstream se refrescó tras un `401`.
+- `auth_error` — la autenticación siguió fallando tras el refresco (§6: "errores
+  401 y refrescos de token"). Comparte el `request_id` de la consulta que lo
+  disparó.
+
+### Qué NO se registra, nunca
+
+Nombres de asegurados o beneficiarios, el payload completo del upstream, el token
+bearer y las credenciales de la API. **No existen columnas** para esos datos, y
+el objeto `AuditEvent` que circula por el código tampoco los transporta. Un fallo
+al escribir la auditoría se registra con `error_log()` y **nunca** rompe la
+respuesta al usuario.
+
+### Retención y limpieza
+
+Retención por defecto: **180 días**. Un evento de WP-Cron diario
+(`carnet_equidad_prune_audit`, programado en la activación) borra las filas más
+antiguas. El valor es configurable con el filtro
+`carnet_equidad_audit_retention_days` (se lee a la defensiva como `int`); un valor
+`<= 0` se fuerza a un mínimo de 1 día para no vaciar nunca la tabla entera.
+
+La tabla se crea en la activación (`dbDelta()`). En sitios que ya estaban activos
+cuando cambia el esquema, un guardián en `admin_init` (comparado contra la opción
+`carnet_equidad_db_version`) vuelve a aplicar la migración sin necesidad de
+reactivar el plugin. **Se conserva en la desactivación** y solo se elimina
+(`DROP TABLE IF EXISTS`) en la desinstalación.
+
+### Visor (acceso restringido)
+
+**Herramientas → "Carnet — Auditoría"** (`add_management_page`, capacidad
+`manage_options`): tabla de solo lectura con los ~100 eventos más recientes
+(`ORDER BY created_at DESC LIMIT 100`). Sin filtros ni paginación en este
+incremento. Todo el contenido se escapa con `esc_html()`.
+
 ## Arquitectura
 
 Distribución orientada a *screaming* / hexagonal bajo `src/`:
@@ -81,17 +148,30 @@ Distribución orientada a *screaming* / hexagonal bajo `src/`:
 | `src/Api/WpTransientTokenStore.php` | Implementación basada en transients |
 | `src/Api/PolicyOptionMapper.php` | Registro crudo → forma recortada `opciones` (puro) |
 | `src/Api/ApiClientFactory.php` | Ensambla el cliente con sus colaboradores de WP |
+| `src/Api/ClientEventListener.php` | Interfaz observadora del cliente (`tokenRefreshed()` / `authRetryFailed()`) |
+| `src/Api/NullClientEventListener.php` | Implementación no-op (4.º argumento por defecto del cliente) |
 | `src/Api/Exception/*` | `ConfigException`, `NotFoundException`, `AuthException`, `UpstreamException` |
 | `src/RateLimit/RateLimiter.php` | Ventana fija por clave (puro, sin WordPress) |
 | `src/RateLimit/RateLimitResult.php` | Objeto de valor: `allowed` / `remaining` / `retryAfter` |
 | `src/RateLimit/RateStore.php` | Interfaz de caché del contador — punto de inyección |
 | `src/RateLimit/WpTransientRateStore.php` | Implementación con transients (clave = hash de la IP) |
-| `src/Rest/ConsultaController.php` | Registra y atiende la ruta REST (incluye el rate limit) |
+| `src/Audit/AuditEvent.php` | Objeto de valor del evento de auditoría (puro; sin nombres/token/payload) |
+| `src/Audit/AuditStore.php` | Interfaz de persistencia (`insert()` / `deleteOlderThan()`) — punto de inyección |
+| `src/Audit/AuditLogger.php` | Mapea el evento a fila y purga por retención (puro, sin WordPress) |
+| `src/Audit/AuditClientEventListener.php` | `ClientEventListener` que registra `token_refresh` / `auth_error` con el contexto de la petición |
+| `src/Audit/WpdbAuditStore.php` | Implementación con `$wpdb` sobre `{$wpdb->prefix}carnet_audit` |
+| `src/Audit/AuditSchema.php` | `dbDelta()` de la tabla de auditoría (activación) |
+| `src/Admin/AuditPage.php` | Visor de solo lectura en Herramientas (`manage_options`) |
+| `src/Rest/ConsultaController.php` | Registra y atiende la ruta REST (rate limit + auditoría + campo `ref`) |
 | `src/Frontend/ShortcodeRenderer.php` | Shortcode + encolado condicional de assets |
-| `src/Plugin.php` | Raíz de composición (hooks) |
+| `src/Plugin.php` | Raíz de composición (hooks, activación, cron de purga) |
 
-`ApiDataCarnetClient`, `CedulaValidator` y `PolicyOptionMapper` **no dependen de
+`ApiDataCarnetClient`, `CedulaValidator`, `PolicyOptionMapper`, `RateLimiter`,
+`AuditEvent`, `AuditLogger` y `AuditClientEventListener` **no dependen de
 WordPress**, y eso es lo que permite probarlos de forma unitaria.
+`WpdbAuditStore`, `AuditSchema`, `AuditPage` y el cableado de auditoría dentro de
+`ConsultaController` no tienen prueba unitaria (mismo criterio que
+`WpTransientTokenStore` y el propio controlador: dependen de WordPress / `$wpdb`).
 
 ### Comportamiento del cliente del servicio
 
@@ -155,6 +235,14 @@ La suite es PHP puro — **no requiere arrancar WordPress**. Cubre:
   `AuthException`, `5xx` y fallo de transporte → `UpstreamException`.
 - `PolicyOptionMapper` — forma recortada, campos de beneficiario / `PRIMA`
   descartados, normalización de fecha `"2026-02-01T00:00:00"` → `"2026-02-01"`.
+- `ApiDataCarnetClient` (auditoría) — un *spy* de `ClientEventListener` comprueba
+  que `tokenRefreshed()` se dispara en la ruta de reintento tras `401` y **no** en
+  el camino feliz con caché fría, y que `authRetryFailed()` se dispara cuando un
+  segundo `401` desemboca en `AuthException`.
+- `AuditEvent` / `AuditLogger` / `AuditClientEventListener` con un
+  `FakeAuditStore` en memoria: mapeo de cada evento a fila (con la redacción — sin
+  claves de nombre/token/payload), `prune()` borra solo lo anterior al corte y
+  devuelve el conteo, y `retentionDays <= 0` se fuerza a `>= 1` día.
 
 ## Pendientes / preguntas abiertas
 

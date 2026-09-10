@@ -44,6 +44,7 @@ final class ApiDataCarnetClient
         private readonly HttpTransport $transport,
         private readonly TokenStore $tokens,
         private readonly ClientConfig $config,
+        private readonly ClientEventListener $events = new NullClientEventListener(),
     ) {
     }
 
@@ -82,9 +83,12 @@ final class ApiDataCarnetClient
         if ($response->status() === 401) {
             // Token rejected: drop it, re-authenticate and retry exactly once.
             $this->tokens->delete(self::TOKEN_CACHE_KEY);
-            $response = $this->sendDataAsegurado($cedula, $this->requestFreshToken());
+            $freshToken = $this->requestFreshToken();
+            $this->events->tokenRefreshed();
+            $response = $this->sendDataAsegurado($cedula, $freshToken);
 
             if ($response->status() === 401) {
+                $this->events->authRetryFailed();
                 throw new AuthException('Upstream rejected the credentials after a token refresh.');
             }
         }

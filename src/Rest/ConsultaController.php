@@ -11,6 +11,10 @@ use CarnetEquidad\Api\Exception\ConfigException;
 use CarnetEquidad\Api\Exception\NotFoundException;
 use CarnetEquidad\Api\Exception\UpstreamException;
 use CarnetEquidad\Api\PolicyOptionMapper;
+use CarnetEquidad\Audit\AuditClientEventListener;
+use CarnetEquidad\Audit\AuditEvent;
+use CarnetEquidad\Audit\AuditLogger;
+use CarnetEquidad\Audit\WpdbAuditStore;
 use CarnetEquidad\RateLimit\RateLimiter;
 use CarnetEquidad\RateLimit\WpTransientRateStore;
 use CarnetEquidad\Validation\CedulaValidator;
@@ -20,12 +24,15 @@ use CarnetEquidad\Validation\CedulaValidator;
  *
  * Body: { "cedula": "..." }
  *
+ * Every response carries a {@code "ref"} field: the per-request UUID v4 that also
+ * keys the audit row(s) written for the call (see {@see AuditLogger}).
+ *
  * Responses:
- *   - 200 { "status": "found", "asegurado": "...", "opciones": [ ... ] }
- *   - 200 { "status": "not_found" }
- *   - 400 { "status": "invalid", "message": "..." }         (bad cedula format)
- *   - 429 { "status": "rate_limited", "message": "..." }     (per-IP fixed-window limit hit)
- *   - 502 { "status": "error", "message": "<generic>" }      (upstream/auth/config failure)
+ *   - 200 { "status": "found", "asegurado": "...", "opciones": [ ... ], "ref": "..." }
+ *   - 200 { "status": "not_found", "ref": "..." }
+ *   - 400 { "status": "invalid", "message": "...", "ref": "..." }     (bad cedula format)
+ *   - 429 { "status": "rate_limited", "message": "...", "ref": "..." } (per-IP fixed-window limit hit)
+ *   - 502 { "status": "error", "message": "<generic>", "ref": "..." } (upstream/auth/config failure)
  *
  * The endpoint is intentionally public for this increment. Abuse is contained by
  * a per-IP fixed-window rate limiter (see {@see RateLimiter}) applied before any
@@ -40,19 +47,25 @@ final class ConsultaController
     private const RATE_LIMIT_DEFAULTS = ['limit' => 10, 'window' => 600];
     private const CEDULA_LENGTH_DEFAULTS = ['min' => 6, 'max' => 11];
 
+    /** Longest raw cedula we will ever store when the submitted value is invalid. */
+    private const RAW_CEDULA_AUDIT_MAX = 40;
+
     private ?ApiDataCarnetClient $client;
     private ?CedulaValidator $validator;
     private ?RateLimiter $rateLimiter;
+    private ?AuditLogger $auditLogger;
 
     public function __construct(
         ?ApiDataCarnetClient $client = null,
         ?CedulaValidator $validator = null,
         private readonly PolicyOptionMapper $mapper = new PolicyOptionMapper(),
         ?RateLimiter $rateLimiter = null,
+        ?AuditLogger $auditLogger = null,
     ) {
         $this->client = $client;
         $this->validator = $validator;
         $this->rateLimiter = $rateLimiter;
+        $this->auditLogger = $auditLogger;
     }
 
     public function register(): void
@@ -82,15 +95,22 @@ final class ConsultaController
      */
     public function handle(\WP_REST_Request $request): \WP_REST_Response
     {
-        $result = $this->rateLimiter()->attempt('ip:' . $this->clientIp());
+        $requestId = \wp_generate_uuid4();
+        $ip = $this->clientIp();
+        $codPla = ApiDataCarnetClient::COD_PLA;
+
+        $result = $this->rateLimiter()->attempt('ip:' . $ip);
 
         if (! $result->allowed) {
-            \error_log('[carnet-equidad] rate limited: ' . substr(hash('sha256', $this->clientIp()), 0, 12));
+            \error_log('[carnet-equidad] rate limited: ' . substr(hash('sha256', $ip), 0, 12));
+
+            $this->audit($requestId, $ip, $this->rawCedula($request), $codPla, AuditEvent::RESULT_RATE_LIMITED, null, 'per-IP fixed window');
 
             $response = new \WP_REST_Response(
                 [
                     'status' => 'rate_limited',
                     'message' => \__('Has realizado demasiadas consultas. Espera unos minutos e inténtalo de nuevo.', 'carnet-equidad'),
+                    'ref' => $requestId,
                 ],
                 429
             );
@@ -99,52 +119,124 @@ final class ConsultaController
             return $response;
         }
 
-        $cedula = $this->validator()->normalize((string) $request->get_param('cedula'));
+        $rawCedula = (string) $request->get_param('cedula');
+        $cedula = $this->validator()->normalize($rawCedula);
 
         if ($cedula === null) {
+            // Keep a truncated copy of the raw submission so the audit trail still
+            // has something; never store more than RAW_CEDULA_AUDIT_MAX chars.
+            $this->audit($requestId, $ip, $this->truncateRawCedula($rawCedula), $codPla, AuditEvent::RESULT_INVALID, null, 'invalid cedula format');
+
             return new \WP_REST_Response(
                 [
                     'status' => 'invalid',
                     'message' => \__('El documento ingresado no tiene un formato válido.', 'carnet-equidad'),
+                    'ref' => $requestId,
                 ],
                 400
             );
         }
 
         try {
-            $records = $this->client()->getDataAsegurado($cedula);
+            $records = $this->client($requestId, $ip, $cedula)->getDataAsegurado($cedula);
         } catch (NotFoundException) {
-            return new \WP_REST_Response(['status' => 'not_found'], 200);
+            $this->audit($requestId, $ip, $cedula, $codPla, AuditEvent::RESULT_NOT_FOUND, 404);
+
+            return new \WP_REST_Response(['status' => 'not_found', 'ref' => $requestId], 200);
         } catch (AuthException | UpstreamException | ConfigException $e) {
             // Log server-side only; never leak upstream detail to the browser.
             \error_log('[carnet-equidad] consulta failed: ' . $e->getMessage());
+
+            $this->audit($requestId, $ip, $cedula, $codPla, AuditEvent::RESULT_ERROR, null, $this->shortClassName($e));
 
             return new \WP_REST_Response(
                 [
                     'status' => 'error',
                     'message' => \__('No fue posible completar la consulta en este momento. Intenta nuevamente más tarde.', 'carnet-equidad'),
+                    'ref' => $requestId,
                 ],
                 502
             );
         }
 
         if ($records === []) {
-            return new \WP_REST_Response(['status' => 'not_found'], 200);
+            $this->audit($requestId, $ip, $cedula, $codPla, AuditEvent::RESULT_NOT_FOUND, 404);
+
+            return new \WP_REST_Response(['status' => 'not_found', 'ref' => $requestId], 200);
         }
+
+        $this->audit($requestId, $ip, $cedula, $codPla, AuditEvent::RESULT_FOUND, 200);
 
         return new \WP_REST_Response(
             [
                 'status' => 'found',
                 'asegurado' => $this->mapper->aseguradoName($records),
                 'opciones' => $this->mapper->mapAll($records),
+                'ref' => $requestId,
             ],
             200
         );
     }
 
-    private function client(): ApiDataCarnetClient
+    /**
+     * Record one {@code query} audit event. A logging failure must never break
+     * the user response.
+     */
+    private function audit(
+        string $requestId,
+        string $ip,
+        string $cedula,
+        string $codPla,
+        string $result,
+        ?int $apiHttp = null,
+        ?string $detail = null,
+    ): void {
+        try {
+            $this->auditLogger()->record(
+                AuditEvent::query($requestId, $ip, $cedula, $codPla, $result, $apiHttp, $detail)
+            );
+        } catch (\Throwable $e) {
+            \error_log('[carnet-equidad] audit record failed: ' . $e->getMessage());
+        }
+    }
+
+    private function client(string $requestId, string $ip, string $cedula): ApiDataCarnetClient
     {
-        return $this->client ??= ApiClientFactory::fromConstants();
+        if ($this->client !== null) {
+            return $this->client;
+        }
+
+        $listener = new AuditClientEventListener(
+            $this->auditLogger(),
+            $requestId,
+            $ip,
+            $cedula,
+            ApiDataCarnetClient::COD_PLA,
+        );
+
+        return $this->client = ApiClientFactory::fromConstants($listener);
+    }
+
+    private function auditLogger(): AuditLogger
+    {
+        return $this->auditLogger ??= new AuditLogger(new WpdbAuditStore());
+    }
+
+    private function rawCedula(\WP_REST_Request $request): string
+    {
+        return $this->truncateRawCedula((string) $request->get_param('cedula'));
+    }
+
+    private function truncateRawCedula(string $raw): string
+    {
+        return substr($raw, 0, self::RAW_CEDULA_AUDIT_MAX);
+    }
+
+    private function shortClassName(\Throwable $e): string
+    {
+        $parts = explode('\\', $e::class);
+
+        return (string) end($parts);
     }
 
     private function validator(): CedulaValidator

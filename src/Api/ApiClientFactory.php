@@ -16,12 +16,18 @@ use CarnetEquidad\Http\WpHttpTransport;
  */
 final class ApiClientFactory
 {
-    public static function fromConstants(): ApiDataCarnetClient
+    /**
+     * @param ClientEventListener|null $events optional listener bound to the
+     *        current request (audit trail for token refresh / auth errors).
+     *        Defaults to a no-op so the no-argument call keeps working.
+     */
+    public static function fromConstants(?ClientEventListener $events = null): ApiDataCarnetClient
     {
         return new ApiDataCarnetClient(
             new WpHttpTransport(),
             new WpTransientTokenStore(),
             ClientConfig::fromConstants(),
+            $events ?? new NullClientEventListener(),
         );
     }
 }

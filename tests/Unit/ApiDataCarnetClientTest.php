@@ -14,6 +14,7 @@ use CarnetEquidad\Http\HttpResponse;
 use CarnetEquidad\Http\TransportException;
 use CarnetEquidad\Tests\Fakes\FakeHttpTransport;
 use CarnetEquidad\Tests\Fakes\FakeTokenStore;
+use CarnetEquidad\Tests\Fakes\SpyClientEventListener;
 use PHPUnit\Framework\TestCase;
 
 final class ApiDataCarnetClientTest extends TestCase
@@ -36,6 +37,16 @@ final class ApiDataCarnetClientTest extends TestCase
             $this->http,
             $this->tokens,
             new ClientConfig('http://api.test:9050/', 'user0017-LIN-0033', 's3cr3t')
+        );
+    }
+
+    private function clientWithListener(SpyClientEventListener $events): ApiDataCarnetClient
+    {
+        return new ApiDataCarnetClient(
+            $this->http,
+            $this->tokens,
+            new ClientConfig('http://api.test:9050/', 'user0017-LIN-0033', 's3cr3t'),
+            $events,
         );
     }
 
@@ -192,6 +203,54 @@ final class ApiDataCarnetClientTest extends TestCase
 
         $this->expectException(UpstreamException::class);
         $this->client()->getDataAsegurado(self::CEDULA);
+    }
+
+    public function testListenerTokenRefreshedFiresOnThe401RetryPathOnly(): void
+    {
+        $spy = new SpyClientEventListener();
+
+        $this->http->enqueue(new HttpResponse(200, self::validarTokenBody('stale-tok')));
+        $this->http->enqueue(new HttpResponse(401, json_encode(['detail' => 'Token invalido'], JSON_THROW_ON_ERROR)));
+        $this->http->enqueue(new HttpResponse(200, self::validarTokenBody('fresh-tok')));
+        $this->http->enqueue(new HttpResponse(200, self::dataAseguradoBody([self::oneRecord()])));
+
+        $this->clientWithListener($spy)->getDataAsegurado(self::CEDULA);
+
+        self::assertSame(1, $spy->tokenRefreshedCalls);
+        self::assertSame(0, $spy->authRetryFailedCalls);
+    }
+
+    public function testListenerTokenRefreshedDoesNotFireOnTheColdCacheHappyPath(): void
+    {
+        $spy = new SpyClientEventListener();
+
+        $this->http->enqueue(new HttpResponse(200, self::validarTokenBody('tok-abc')));
+        $this->http->enqueue(new HttpResponse(200, self::dataAseguradoBody([self::oneRecord()])));
+
+        $this->clientWithListener($spy)->getDataAsegurado(self::CEDULA);
+
+        self::assertSame(0, $spy->tokenRefreshedCalls);
+        self::assertSame(0, $spy->authRetryFailedCalls);
+    }
+
+    public function testListenerAuthRetryFailedFiresWhenTheSecond401LeadsToAuthException(): void
+    {
+        $spy = new SpyClientEventListener();
+
+        $this->http->enqueue(new HttpResponse(200, self::validarTokenBody('tok-1')));
+        $this->http->enqueue(new HttpResponse(401, 'nope'));
+        $this->http->enqueue(new HttpResponse(200, self::validarTokenBody('tok-2')));
+        $this->http->enqueue(new HttpResponse(401, 'nope'));
+
+        try {
+            $this->clientWithListener($spy)->getDataAsegurado(self::CEDULA);
+            self::fail('Expected AuthException.');
+        } catch (AuthException) {
+            // expected
+        }
+
+        self::assertSame(1, $spy->tokenRefreshedCalls);
+        self::assertSame(1, $spy->authRetryFailedCalls);
     }
 
     public function testConfigThrowsWhenCredentialsAreMissing(): void

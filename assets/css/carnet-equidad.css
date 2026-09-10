@@ -1,90 +1,195 @@
-/* Carnet Equidad public form - minimal styles. */
+/*
+ * Carnet Equidad public form.
+ * Visual language aligned with La Equidad's existing public forms:
+ * white rounded card, pill inputs, brand-green actions.
+ * Fonts are inherited from the active theme on purpose (no web fonts).
+ */
 
 .carnet-equidad {
-	max-width: 32rem;
-	margin: 1.5rem 0;
+	--ce-green: #78be20;
+	--ce-green-strong: #5c9915;
+	--ce-green-soft: #f2f9e8;
+	--ce-ink: #2f2f33;
+	--ce-label: #33475b;
+	--ce-muted: #5b6470;
+	--ce-border: #d7dbe0;
+	--ce-border-strong: #b9c0c8;
+	--ce-card-radius: 22px;
+	--ce-field-radius: 999px;
+	--ce-panel-radius: 16px;
+	--ce-shadow: 0 10px 30px rgba(23, 43, 12, 0.08);
+
+	max-width: 34rem;
+	margin: 1.5rem auto;
+	padding: clamp(1.25rem, 4vw, 2.25rem);
+	background: #fff;
+	border: 1px solid #edeff2;
+	border-radius: var(--ce-card-radius);
+	box-shadow: var(--ce-shadow);
+	color: var(--ce-ink);
 	font-size: 1rem;
-	line-height: 1.5;
+	line-height: 1.55;
 }
+
+.carnet-equidad,
+.carnet-equidad *,
+.carnet-equidad *::before,
+.carnet-equidad *::after {
+	box-sizing: border-box;
+}
+
+/* --- Form row --------------------------------------------------------------- */
 
 .carnet-equidad__form {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 0.5rem;
-	align-items: flex-end;
+	gap: 0.6rem;
+	align-items: stretch;
 }
 
 .carnet-equidad__label {
-	display: block;
 	width: 100%;
-	margin-bottom: 0.25rem;
-	font-weight: 600;
+	margin-bottom: 0.15rem;
+	color: var(--ce-label);
+	font-weight: 700;
+	font-size: 0.95rem;
 }
 
 .carnet-equidad__input {
-	flex: 1 1 12rem;
-	padding: 0.5rem 0.625rem;
-	border: 1px solid #8c8f94;
-	border-radius: 4px;
+	flex: 1 1 14rem;
+	min-width: 0;
+	padding: 0.85rem 1.15rem;
+	border: 1px solid var(--ce-border);
+	border-radius: var(--ce-field-radius);
+	background: #fff;
+	color: inherit;
 	font: inherit;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.carnet-equidad__input:focus {
+	outline: none;
+	border-color: var(--ce-green);
+	box-shadow: 0 0 0 3px rgba(120, 190, 32, 0.22);
 }
 
 .carnet-equidad__submit,
 .carnet-equidad__continue {
-	padding: 0.5rem 1rem;
+	padding: 0.85rem 1.9rem;
 	border: 0;
-	border-radius: 4px;
-	background: #1d4ed8;
+	border-radius: var(--ce-field-radius);
+	background: var(--ce-green);
 	color: #fff;
 	font: inherit;
+	font-weight: 700;
 	cursor: pointer;
+	transition: background 0.15s ease, transform 0.05s ease;
+}
+
+.carnet-equidad__submit:hover,
+.carnet-equidad__continue:hover {
+	background: var(--ce-green-strong);
+}
+
+.carnet-equidad__submit:active,
+.carnet-equidad__continue:active {
+	transform: translateY(1px);
 }
 
 .carnet-equidad__submit[disabled] {
-	opacity: 0.6;
+	opacity: 0.65;
 	cursor: progress;
 }
 
+@media (max-width: 26rem) {
+	.carnet-equidad__submit {
+		flex: 1 1 100%;
+	}
+}
+
+/* --- Status messages ------------------------------------------------------- */
+
 .carnet-equidad__status {
-	margin-top: 0.875rem;
-	padding: 0.625rem 0.75rem;
-	border-radius: 4px;
-	background: #f0f0f1;
+	margin-top: 1rem;
+	padding: 0.8rem 1rem;
+	border: 1px solid var(--ce-border);
+	border-radius: var(--ce-panel-radius);
+	background: #f6f7f9;
+}
+
+.carnet-equidad__status[data-state="loading"] {
+	border-color: #dcecc4;
+	background: var(--ce-green-soft);
+	color: var(--ce-green-strong);
 }
 
 .carnet-equidad__status[data-state="error"] {
-	background: #fcf0f1;
-	color: #8a1f11;
+	border-color: #f0c4c4;
+	background: #fcecec;
+	color: #8f2020;
 }
 
-.carnet-equidad__status[data-state="not-found"] {
-	background: #fef8ee;
-	color: #8a6d1f;
+.carnet-equidad__status[data-state="not-found"],
+.carnet-equidad__status[data-state="invalid"] {
+	border-color: #efd9a8;
+	background: #fdf6e7;
+	color: #8a6a12;
 }
+
+/* --- Results ------------------------------------------------------------------ */
 
 .carnet-equidad__results {
-	margin-top: 1rem;
+	margin-top: 1.25rem;
 }
 
 .carnet-equidad__asegurado {
-	font-weight: 600;
-	margin: 0 0 0.5rem;
+	margin: 0 0 0.15rem;
+	color: var(--ce-label);
+	font-weight: 700;
+	font-size: 1.05rem;
+}
+
+.carnet-equidad__prompt {
+	margin: 0.35rem 0 0.75rem;
+	color: var(--ce-muted);
 }
 
 .carnet-equidad__option-list {
 	display: flex;
 	flex-direction: column;
-	gap: 0.5rem;
-	margin: 0.5rem 0 1rem;
+	gap: 0.6rem;
+	margin: 0.5rem 0 1.25rem;
 }
 
 .carnet-equidad__option {
 	display: flex;
-	gap: 0.5rem;
+	gap: 0.7rem;
 	align-items: flex-start;
-	padding: 0.625rem 0.75rem;
-	border: 1px solid #dcdcde;
-	border-radius: 4px;
+	padding: 0.9rem 1rem;
+	border: 1px solid var(--ce-border);
+	border-radius: var(--ce-panel-radius);
+	cursor: pointer;
+	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.carnet-equidad__option:hover {
+	border-color: var(--ce-border-strong);
+}
+
+.carnet-equidad__option:has(input:checked) {
+	border-color: var(--ce-green);
+	background: var(--ce-green-soft);
+	box-shadow: 0 0 0 2px rgba(120, 190, 32, 0.18);
+}
+
+.carnet-equidad__option input[type="radio"] {
+	flex: 0 0 auto;
+	width: 1.1rem;
+	height: 1.1rem;
+	margin: 0.15rem 0 0;
+	appearance: auto;
+	-webkit-appearance: auto;
+	accent-color: var(--ce-green);
 	cursor: pointer;
 }
 
@@ -92,24 +197,35 @@
 	flex: 1;
 }
 
+/* --- Selected-option summary (placeholder until the PDF step) ------------- */
+
 .carnet-equidad__summary {
 	margin-top: 1rem;
-	padding: 0.75rem;
-	border: 1px dashed #8c8f94;
-	border-radius: 4px;
+	padding: 1rem 1.15rem;
+	border: 1px solid var(--ce-border);
+	border-left: 4px solid var(--ce-green);
+	border-radius: var(--ce-panel-radius);
+	background: #fbfdf7;
 }
 
 .carnet-equidad__summary dl {
 	display: grid;
 	grid-template-columns: max-content 1fr;
-	gap: 0.25rem 1rem;
+	gap: 0.3rem 1.25rem;
 	margin: 0.5rem 0 0;
 }
 
 .carnet-equidad__summary dt {
-	font-weight: 600;
+	color: var(--ce-label);
+	font-weight: 700;
 }
 
 .carnet-equidad__summary dd {
 	margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.carnet-equidad * {
+		transition: none !important;
+	}
 }

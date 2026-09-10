@@ -19,7 +19,7 @@ final class PolicyOptionMapper
     /**
      * @param list<array<string, mixed>> $records
      *
-     * @return list<array{id:int, poliza:string, orden:string, certificado:string, sucursal:string, vigencia_desde:?string, vigencia_hasta:?string}>
+     * @return list<array{id:int, key:string, poliza:string, orden:string, certificado:string, sucursal:string, vigencia_desde:?string, vigencia_hasta:?string}>
      */
     public function mapAll(array $records): array
     {
@@ -34,11 +34,11 @@ final class PolicyOptionMapper
     /**
      * @param array<string, mixed> $record
      *
-     * @return array{id:int, poliza:string, orden:string, certificado:string, sucursal:string, vigencia_desde:?string, vigencia_hasta:?string}
+     * @return array{id:int, key:string, poliza:string, orden:string, certificado:string, sucursal:string, vigencia_desde:?string, vigencia_hasta:?string}
      */
     public function mapRecord(array $record, int $id): array
     {
-        return [
+        $option = [
             'id' => $id,
             'poliza' => $this->str($record, 'POLIZA'),
             'orden' => $this->str($record, 'ORDEN'),
@@ -47,6 +47,9 @@ final class PolicyOptionMapper
             'vigencia_desde' => $this->date($record['FECHA_INICIO'] ?? null),
             'vigencia_hasta' => $this->date($record['FECHA_FIN'] ?? null),
         ];
+        $option['key'] = hash('sha256', implode("\n", array_slice($option, 1)));
+
+        return $option;
     }
 
     /**

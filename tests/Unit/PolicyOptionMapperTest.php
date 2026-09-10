@@ -40,9 +40,10 @@ final class PolicyOptionMapperTest extends TestCase
         $option = $this->mapper->mapRecord(self::rawRecord(), 0);
 
         self::assertSame(
-            ['id', 'poliza', 'orden', 'certificado', 'sucursal', 'vigencia_desde', 'vigencia_hasta'],
+            ['id', 'poliza', 'orden', 'certificado', 'sucursal', 'vigencia_desde', 'vigencia_hasta', 'key'],
             array_keys($option)
         );
+        self::assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $option['key']);
         self::assertSame(0, $option['id']);
         self::assertSame('AAA011951', $option['poliza']);
         self::assertSame('42', $option['orden']);

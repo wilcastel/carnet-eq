@@ -26,6 +26,7 @@ final class AuditEvent
     public const TYPE_QUERY = 'query';
     public const TYPE_TOKEN_REFRESH = 'token_refresh';
     public const TYPE_AUTH_ERROR = 'auth_error';
+    public const TYPE_CARNET_GENERATED = 'carnet_generated';
 
     private const RESULTS = [
         self::RESULT_FOUND,
@@ -39,6 +40,7 @@ final class AuditEvent
         self::TYPE_QUERY,
         self::TYPE_TOKEN_REFRESH,
         self::TYPE_AUTH_ERROR,
+        self::TYPE_CARNET_GENERATED,
     ];
 
     /** Hard cap on {@see self::$detail}; the column is VARCHAR(255). */
@@ -82,6 +84,18 @@ final class AuditEvent
         ?string $detail = null,
     ): self {
         return new self($requestId, $ip, $cedula, $codPla, self::TYPE_QUERY, $result, $apiHttp, $detail);
+    }
+
+    /** A carnet PDF was generated from a freshly fetched policy record. */
+    public static function carnetGenerated(
+        string $requestId,
+        string $ip,
+        string $cedula,
+        string $codPla,
+        string $result,
+        ?string $detail = null,
+    ): self {
+        return new self($requestId, $ip, $cedula, $codPla, self::TYPE_CARNET_GENERATED, $result, 200, $detail);
     }
 
     /**

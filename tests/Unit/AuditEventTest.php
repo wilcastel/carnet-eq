@@ -38,6 +38,15 @@ final class AuditEventTest extends TestCase
         self::assertSame('AuthException after retry', $authErr->detail);
     }
 
+    public function testCarnetGeneratedFactoryRecordsOnlyTheEventMetadata(): void
+    {
+        $event = AuditEvent::carnetGenerated('req-pdf', '10.0.0.4', '123', '1821', AuditEvent::RESULT_FOUND, 'pdf_generated');
+
+        self::assertSame('carnet_generated', $event->eventType);
+        self::assertSame(200, $event->apiHttp);
+        self::assertSame('pdf_generated', $event->detail);
+    }
+
     public function testAnUnknownResultIsRejected(): void
     {
         $this->expectException(\InvalidArgumentException::class);

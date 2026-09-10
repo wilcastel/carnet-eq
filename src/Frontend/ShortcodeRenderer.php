@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace CarnetEquidad\Frontend;
 
 use CarnetEquidad\Rest\ConsultaController;
+use CarnetEquidad\Download\CarnetDownloadController;
 
 /**
  * Registers the [carnet_equidad_form] shortcode and, only on pages that use it,
@@ -59,6 +60,9 @@ final class ShortcodeRenderer
             [
                 'restUrl' => \esc_url_raw(\rest_url(ConsultaController::NAMESPACE . ConsultaController::ROUTE)),
                 'nonce' => \wp_create_nonce('wp_rest'),
+                'downloadUrl' => \admin_url('admin-post.php'),
+                'downloadNonce' => \wp_create_nonce(CarnetDownloadController::NONCE_ACTION),
+                'downloadAction' => CarnetDownloadController::ACTION,
                 'i18n' => [
                     'loading' => \__('Consultando…', 'carnet-equidad'),
                     'notFound' => \__('No se encontró información para el documento ingresado.', 'carnet-equidad'),
@@ -74,6 +78,7 @@ final class ShortcodeRenderer
                     'order' => \__('Orden', 'carnet-equidad'),
                     'validity' => \__('Vigencia', 'carnet-equidad'),
                     'chosen' => \__('Opción seleccionada', 'carnet-equidad'),
+                    'download' => \__('Descargar carnet', 'carnet-equidad'),
                 ],
             ]
         );

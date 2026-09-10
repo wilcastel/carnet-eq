@@ -48,7 +48,7 @@
 		return from || to || '—';
 	}
 
-	function renderOptions(resultsEl, data) {
+	function renderOptions(resultsEl, data, cedula) {
 		clearResults(resultsEl);
 		if (!resultsEl) {
 			return;
@@ -107,7 +107,7 @@
 		var continueBtn = document.createElement('button');
 		continueBtn.type = 'button';
 		continueBtn.className = 'carnet-equidad__continue';
-		continueBtn.textContent = t('continue', 'Continuar');
+		continueBtn.textContent = t('download', 'Descargar carnet');
 		wrapper.appendChild(continueBtn);
 
 		var summary = document.createElement('div');
@@ -125,9 +125,27 @@
 				return;
 			}
 
-			// TODO: next increment -> call /wp-json/carnet/v1/pdf with
-			// { cedula, seleccion: selected.id } and stream the PDF download.
-			console.log('[carnet-equidad] selected option', selected);
+			var downloadForm = document.createElement('form');
+			downloadForm.method = 'post';
+			downloadForm.action = config.downloadUrl || '';
+			downloadForm.hidden = true;
+			[
+				['action', config.downloadAction || 'carnet_equidad_download_pdf'],
+				['_wpnonce', config.downloadNonce || ''],
+				['cedula', cedula || ''],
+				['seleccion', String(selected.id)],
+				['selection_key', selected.key || ''],
+				['privacy_consent', '1']
+			].forEach(function (pair) {
+				var hidden = document.createElement('input');
+				hidden.type = 'hidden';
+				hidden.name = pair[0];
+				hidden.value = pair[1];
+				downloadForm.appendChild(hidden);
+			});
+			document.body.appendChild(downloadForm);
+			downloadForm.submit();
+			downloadForm.remove();
 
 			summary.hidden = false;
 			summary.innerHTML = '';
@@ -164,7 +182,7 @@
 
 		if (httpStatus === 200 && data.status === 'found') {
 			setStatus(statusEl, '', '');
-			renderOptions(resultsEl, data);
+			renderOptions(resultsEl, data, root.querySelector('[data-carnet-cedula]').value.replace(/\D+/g, ''));
 			return;
 		}
 

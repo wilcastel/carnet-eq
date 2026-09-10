@@ -65,6 +65,7 @@ final class ShortcodeRenderer
                     'error' => \__('No fue posible completar la consulta en este momento. Intenta nuevamente más tarde.', 'carnet-equidad'),
                     'rateLimited' => \__('Has realizado demasiadas consultas. Espera unos minutos e inténtalo de nuevo.', 'carnet-equidad'),
                     'invalid' => \__('Ingresa un número de documento válido (6 a 11 dígitos).', 'carnet-equidad'),
+                    'consentRequired' => \__('Debes aceptar el tratamiento de datos personales para realizar la consulta.', 'carnet-equidad'),
                     'selectPrompt' => \__('Selecciona la póliza que deseas consultar:', 'carnet-equidad'),
                     'continue' => \__('Continuar', 'carnet-equidad'),
                     'branch' => \__('Sucursal', 'carnet-equidad'),
@@ -84,6 +85,7 @@ final class ShortcodeRenderer
         \wp_enqueue_script(self::HANDLE);
 
         $fieldId = \esc_attr(\wp_unique_id('carnet-equidad-cedula-'));
+        $consentId = \esc_attr(\wp_unique_id('carnet-equidad-consent-'));
 
         ob_start();
         ?>
@@ -104,6 +106,22 @@ final class ShortcodeRenderer
                     maxlength="20"
                     required
                 />
+                <div class="carnet-equidad__consent">
+                    <input
+                        type="checkbox"
+                        id="<?php echo $consentId; ?>"
+                        name="privacy_consent"
+                        value="1"
+                        data-carnet-consent
+                        required
+                    />
+                    <label for="<?php echo $consentId; ?>">
+                        <?php echo \esc_html__('Autorizo el tratamiento de mis datos personales conforme a la', 'carnet-equidad'); ?>
+                        <a href="https://sftp.laequidadseguros.coop/2024/POLITICA%20DE%20TRATAMIENTO%20DE%20DATOS.pdf" target="_blank" rel="noopener noreferrer">
+                            <?php echo \esc_html__('Política de Tratamiento de Datos Personales', 'carnet-equidad'); ?>
+                        </a>.
+                    </label>
+                </div>
                 <button type="submit" class="carnet-equidad__submit" data-carnet-submit>
                     <?php echo \esc_html__('Consultar', 'carnet-equidad'); ?>
                 </button>

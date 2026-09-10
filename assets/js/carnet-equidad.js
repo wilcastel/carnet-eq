@@ -191,16 +191,24 @@
 	function bindForm(root) {
 		var form = root.querySelector('[data-carnet-form]');
 		var input = root.querySelector('[data-carnet-cedula]');
+		var consent = root.querySelector('[data-carnet-consent]');
 		var submit = root.querySelector('[data-carnet-submit]');
 		var statusEl = root.querySelector('[data-carnet-status]');
 		var resultsEl = root.querySelector('[data-carnet-results]');
 
-		if (!form || !input) {
+		if (!form || !input || !consent) {
 			return;
 		}
 
 		form.addEventListener('submit', function (event) {
 			event.preventDefault();
+
+			if (!consent.checked) {
+				clearResults(resultsEl);
+				setStatus(statusEl, t('consentRequired', 'Debes aceptar el tratamiento de datos personales para realizar la consulta.'), 'invalid');
+				consent.focus();
+				return;
+			}
 
 			var cedula = (input.value || '').replace(/\D+/g, '');
 			if (cedula.length < 6 || cedula.length > 11) {
@@ -222,7 +230,7 @@
 					'Content-Type': 'application/json',
 					'X-WP-Nonce': config.nonce || ''
 				},
-				body: JSON.stringify({ cedula: cedula })
+				body: JSON.stringify({ cedula: cedula, privacy_consent: true })
 			})
 				.then(function (response) {
 					return response

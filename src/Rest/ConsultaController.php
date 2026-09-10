@@ -22,7 +22,7 @@ use CarnetEquidad\Validation\CedulaValidator;
 /**
  * REST route: POST /wp-json/carnet/v1/consulta
  *
- * Body: { "cedula": "..." }
+ * Body: { "cedula": "...", "privacy_consent": true }
  *
  * Every response carries a {@code "ref"} field: the per-request UUID v4 that also
  * keys the audit row(s) written for the call (see {@see AuditLogger}).
@@ -35,8 +35,9 @@ use CarnetEquidad\Validation\CedulaValidator;
  *   - 502 { "status": "error", "message": "<generic>", "ref": "..." } (upstream/auth/config failure)
  *
  * The endpoint is intentionally public for this increment. Abuse is contained by
- * a per-IP fixed-window rate limiter (see {@see RateLimiter}) applied before any
- * validation or upstream call.
+ * a per-IP fixed-window rate limiter (see {@see RateLimiter}) applied after the
+ * required privacy-consent check and before any document validation or upstream
+ * call.
  * TODO: CAPTCHA before production.
  */
 final class ConsultaController
@@ -85,6 +86,10 @@ final class ConsultaController
                         'required' => true,
                         'type' => 'string',
                     ],
+                    'privacy_consent' => [
+                        'required' => true,
+                        'type' => 'boolean',
+                    ],
                 ],
             ]
         );
@@ -95,6 +100,16 @@ final class ConsultaController
      */
     public function handle(\WP_REST_Request $request): \WP_REST_Response
     {
+        if (! $this->hasPrivacyConsent($request)) {
+            return new \WP_REST_Response(
+                [
+                    'status' => 'consent_required',
+                    'message' => \__('Debes aceptar el tratamiento de datos personales para realizar la consulta.', 'carnet-equidad'),
+                ],
+                400
+            );
+        }
+
         $requestId = \wp_generate_uuid4();
         $ip = $this->clientIp();
         $codPla = ApiDataCarnetClient::COD_PLA;
@@ -225,6 +240,16 @@ final class ConsultaController
     private function rawCedula(\WP_REST_Request $request): string
     {
         return $this->truncateRawCedula((string) $request->get_param('cedula'));
+    }
+
+    /**
+     * Accept only explicit affirmative boolean representations. This is kept
+     * separate from route argument validation so direct controller calls cannot
+     * bypass the privacy requirement.
+     */
+    private function hasPrivacyConsent(\WP_REST_Request $request): bool
+    {
+        return \in_array($request->get_param('privacy_consent'), [true, 1, '1', 'true'], true);
     }
 
     private function truncateRawCedula(string $raw): string

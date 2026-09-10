@@ -36,9 +36,12 @@ final class Plugin
 
     public function boot(): void
     {
+        $auditPage = new AuditPage();
+
         \add_action('init', [new ShortcodeRenderer($this->pluginFile), 'register']);
         \add_action('rest_api_init', [new ConsultaController(), 'register']);
-        \add_action('admin_menu', [new AuditPage(), 'register']);
+        \add_action('admin_menu', [$auditPage, 'registerMenu']);
+        \add_action('admin_init', [$auditPage, 'registerExport']);
         \add_action(self::PRUNE_AUDIT_HOOK, [self::class, 'pruneAudit']);
         // Self-heal the schema on sites that were already active when a new
         // revision shipped (the activation hook only runs on (re)activation).

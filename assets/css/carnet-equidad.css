@@ -1,0 +1,115 @@
+/* Carnet Equidad public form - minimal styles. */
+
+.carnet-equidad {
+	max-width: 32rem;
+	margin: 1.5rem 0;
+	font-size: 1rem;
+	line-height: 1.5;
+}
+
+.carnet-equidad__form {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	align-items: flex-end;
+}
+
+.carnet-equidad__label {
+	display: block;
+	width: 100%;
+	margin-bottom: 0.25rem;
+	font-weight: 600;
+}
+
+.carnet-equidad__input {
+	flex: 1 1 12rem;
+	padding: 0.5rem 0.625rem;
+	border: 1px solid #8c8f94;
+	border-radius: 4px;
+	font: inherit;
+}
+
+.carnet-equidad__submit,
+.carnet-equidad__continue {
+	padding: 0.5rem 1rem;
+	border: 0;
+	border-radius: 4px;
+	background: #1d4ed8;
+	color: #fff;
+	font: inherit;
+	cursor: pointer;
+}
+
+.carnet-equidad__submit[disabled] {
+	opacity: 0.6;
+	cursor: progress;
+}
+
+.carnet-equidad__status {
+	margin-top: 0.875rem;
+	padding: 0.625rem 0.75rem;
+	border-radius: 4px;
+	background: #f0f0f1;
+}
+
+.carnet-equidad__status[data-state="error"] {
+	background: #fcf0f1;
+	color: #8a1f11;
+}
+
+.carnet-equidad__status[data-state="not-found"] {
+	background: #fef8ee;
+	color: #8a6d1f;
+}
+
+.carnet-equidad__results {
+	margin-top: 1rem;
+}
+
+.carnet-equidad__asegurado {
+	font-weight: 600;
+	margin: 0 0 0.5rem;
+}
+
+.carnet-equidad__option-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	margin: 0.5rem 0 1rem;
+}
+
+.carnet-equidad__option {
+	display: flex;
+	gap: 0.5rem;
+	align-items: flex-start;
+	padding: 0.625rem 0.75rem;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	cursor: pointer;
+}
+
+.carnet-equidad__option-text {
+	flex: 1;
+}
+
+.carnet-equidad__summary {
+	margin-top: 1rem;
+	padding: 0.75rem;
+	border: 1px dashed #8c8f94;
+	border-radius: 4px;
+}
+
+.carnet-equidad__summary dl {
+	display: grid;
+	grid-template-columns: max-content 1fr;
+	gap: 0.25rem 1rem;
+	margin: 0.5rem 0 0;
+}
+
+.carnet-equidad__summary dt {
+	font-weight: 600;
+}
+
+.carnet-equidad__summary dd {
+	margin: 0;
+}

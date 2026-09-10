@@ -212,11 +212,31 @@ define( 'CARNET_API_BASE_URL', 'http://192.168.243.194:9050' ); // opcional — 
 
 ```bash
 cd wp-content/plugins/carnet-equidad
-composer install --no-dev   # producción
+composer install --no-dev --optimize-autoloader   # producción
 ```
 
 Luego activa "Carnet Equidad" en wp-admin y coloca `[carnet_equidad_form]` en una
 página.
+
+## Generación de carnet PDF
+
+La opción seleccionada descarga un PDF directamente desde el navegador. El
+servidor exige de nuevo el consentimiento, el nonce, el documento normalizado y
+la opción elegida; vuelve a consultar la API y solo entonces usa el registro
+actual para renderizar. No confía en detalles de póliza enviados por el
+navegador y no guarda el PDF ni datos personales adicionales en el disco.
+
+La plantilla rastreada es `assets/templates/carnet-template.pdf`. La generación
+usa `setasign/fpdi` 2.6 y `tecnickcom/tcpdf` 6.11: FPDI importa la plantilla y
+TCPDF superpone datos. No se usa el paquete adaptador `fpdi-tcpdf`, que Composer
+marca como abandonado; FPDI ya incluye su integración TCPDF cuando ambas
+bibliotecas están instaladas. Producción requiere las extensiones PHP `mbstring`
+y `zlib` (además de las extensiones estándar de WordPress); fueron comprobadas
+en el entorno de desarrollo con `php -m`.
+
+Los campos que la API aún no entrega (`Tomador` y `V/r asegurado por gastos
+médicos`) se imprimen como **PENDIENTE DE CONFIRMACIÓN**. El campo de documento
+se etiqueta como `DOCUMENTO`, no como NIT.
 
 ## Ejecución de las pruebas
 
@@ -264,15 +284,26 @@ incremento:
 - **#21 — formato de fecha / zona horaria.** `"2026-02-01T00:00:00"` se trunca a
   la parte de fecha; se desconoce la zona horaria.
 
-### Bloquea el SIGUIENTE incremento (carnet en PDF)
+### Preguntas para la reunión (ajustes posteriores del carnet PDF)
 
 - **#23 / #24 / #25** — cuál de los dos diseños del carnet es el definitivo, en
   qué formato (PDF vectorial vs imagen vs AI/PSD), dimensiones finales y si lleva
   reverso.
 - **#16** — cuando hay varios registros, cuál debe usar el carnet.
-- **#17** — de dónde salen los campos "Tomador" y "V/r asegurado por gastos
-  médicos" (no vienen en la respuesta de la API).
+- **#17** — fuente definitiva de `Tomador` y de `V/r asegurado por gastos
+  médicos` (no vienen en la respuesta de la API). Actualmente se muestran como
+  `PENDIENTE DE CONFIRMACIÓN`.
+- **#29 — alcance de la plantilla.** Confirmar si el modelo de Accidentes
+  Estudiantiles aplica a todos los productos/pólizas que devuelve la API.
+- **#30 — etiqueta del identificador.** Confirmar si el campo debe decir
+  `Documento`, `Cédula`, otro tipo documental o NIT en algún caso; hoy dice
+  `DOCUMENTO` para no atribuir un NIT a la persona asegurada.
 - **#26 / #27 / #28** — foto, código QR / de verificación, y textos legales /
   firmas / logos obligatorios en el carnet.
-- **Elección de la librería PDF** (FPDI+TCPDF vs mPDF), a la espera del formato
-  final de la plantilla.
+- **Formato final del modelo.** Confirmar las dimensiones de corte; el archivo
+  recibido incluye espacio blanco inferior, por lo que el PDF descargado se
+  recorta al área visible de 1044 × 320 pt.
+
+## Próxima reunión
+
+Las decisiones pendientes para completar y liberar el plugin están en [la guía de reunión](docs/preguntas-reunion.md).

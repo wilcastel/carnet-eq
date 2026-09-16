@@ -12,6 +12,10 @@ final class CarnetPdfGenerator
 {
     private const PLACEHOLDER = 'PENDIENTE DE CONFIRMACIÓN';
 
+    /** Real card-size dimensions of the approved template, in points. */
+    private const PAGE_WIDTH = 238.512;
+    private const PAGE_HEIGHT = 141.732;
+
     public function __construct(private readonly string $templatePath)
     {
     }
@@ -30,30 +34,37 @@ final class CarnetPdfGenerator
             throw new \RuntimeException('Carnet PDF template is unavailable.');
         }
 
-        $pdf = new \setasign\Fpdi\Tcpdf\Fpdi('L', 'pt', [1044, 320], true, 'UTF-8', false);
+        // The approved template is a 2-page, real card-size (238.512 x 141.732pt)
+        // artwork: page 1 is the front cover (static branding, no dynamic data),
+        // page 2 is the blank-white back where every field below is printed.
+        // Both sides ship in the output, front first, exactly as approved.
+        $pdf = new \setasign\Fpdi\Tcpdf\Fpdi('L', 'pt', [self::PAGE_WIDTH, self::PAGE_HEIGHT], true, 'UTF-8', false);
         $pdf->SetCreator('Carnet Equidad');
         $pdf->SetTitle('Carnet');
         $pdf->SetMargins(0, 0, 0);
         $pdf->SetAutoPageBreak(false, 0);
         $pdf->setPrintHeader(false);
         $pdf->setPrintFooter(false);
-        $pdf->AddPage();
         $pdf->setSourceFile($this->templatePath);
-        $template = $pdf->importPage(1);
-        $pdf->useTemplate($template, 0, 0, 1044, 954);
 
-        // Cover only variable source values. The surrounding approved artwork
-        // stays intact, including the product-specific wording pending policy.
-        $this->field($pdf, 82, 143, 165, 20, $this->value($record, 'POLIZA'), 11);
-        $this->field($pdf, 98, 167, 210, 35, self::PLACEHOLDER, 7);
-        $this->field($pdf, 110, 215, 205, 20, $insured, 10);
-        // The model's NIT field belongs to an institution. This is an insured
-        // person's document, so replace the label rather than misrepresent it.
-        $this->field($pdf, 346, 143, 150, 20, 'DOCUMENTO: ' . $document, 8);
-        $this->field($pdf, 390, 167, 110, 20, $this->value($record, 'ORDEN'), 11);
-        $this->field($pdf, 405, 191, 100, 20, $this->date($record['FECHA_INICIO'] ?? null), 8);
-        $this->field($pdf, 388, 215, 115, 20, $this->date($record['FECHA_FIN'] ?? null), 8);
-        $this->field($pdf, 242, 257, 195, 20, self::PLACEHOLDER, 6);
+        $pdf->AddPage();
+        $cover = $pdf->importPage(1);
+        $pdf->useTemplate($cover, 0, 0, self::PAGE_WIDTH, self::PAGE_HEIGHT);
+
+        $pdf->AddPage();
+        $template = $pdf->importPage(2);
+        $pdf->useTemplate($template, 0, 0, self::PAGE_WIDTH, self::PAGE_HEIGHT);
+
+        // The back of the new template ships with no baked-in labels (unlike
+        // the previous artwork), so every field prints its own "Label: value".
+        $this->field($pdf, 6, 58, 104, 9, 'Póliza: ' . $this->value($record, 'POLIZA'), 6);
+        $this->field($pdf, 116, 58, 108, 9, 'Documento: ' . $document, 6);
+        $this->field($pdf, 6, 69, 218, 9, 'Tomador: ' . $this->valueOrPlaceholder($record, 'NOMBRE_TOMADOR'), 6);
+        $this->field($pdf, 6, 80, 66, 9, 'Orden: ' . $this->value($record, 'ORDEN'), 6);
+        $this->field($pdf, 76, 80, 74, 9, 'Vigencia: ' . $this->date($record['FECHA_INICIO'] ?? null), 6);
+        $this->field($pdf, 154, 80, 70, 9, 'Hasta: ' . $this->date($record['FECHA_FIN'] ?? null), 6);
+        $this->field($pdf, 6, 91, 218, 9, 'Asegurado: ' . $insured, 6);
+        $this->field($pdf, 6, 104, 218, 16, 'V/r asegurado por gastos médicos: ' . $this->currency($record['VAL_GASTOS_MED'] ?? null), 6);
 
         return $pdf->Output('', 'S');
     }
@@ -65,7 +76,11 @@ final class CarnetPdfGenerator
         $pdf->SetTextColor(20, 20, 20);
         $pdf->SetFont('helvetica', 'B', $fontSize);
         $pdf->SetXY($x, $y + 2);
-        $pdf->MultiCell($width, $height - 2, $this->text($value), 0, 'L', false, 0, '', '', true, 0, false, true, $height - 2, 'M');
+        // Plain MultiCell only: the maxh+valign auto-centering variant relies on
+        // TCPDF's transaction (clone/rollback) machinery, which does not survive
+        // a template imported via FPDI on this small a page — it silently drops
+        // every field drawn before the last one. See CarnetPdfGeneratorTest.
+        $pdf->MultiCell($width, $height - 2, $this->text($value), 0, 'L');
     }
 
     /** @param array<string, mixed> $record */
@@ -82,6 +97,28 @@ final class CarnetPdfGenerator
         }
 
         return $matches[1];
+    }
+
+    /**
+     * @param array<string, mixed> $record
+     * Same fallback precedent as {@see date()}: a newly-added field that the
+     * API does not yet guarantee for every record degrades to the pending
+     * placeholder instead of failing the whole carnet.
+     */
+    private function valueOrPlaceholder(array $record, string $key): string
+    {
+        $value = $this->value($record, $key);
+        return $value === '' ? self::PLACEHOLDER : $value;
+    }
+
+    /** Formats a JSON float amount as whole-peso Colombian currency, e.g. "$6.000.000". */
+    private function currency(mixed $value): string
+    {
+        if (! is_numeric($value)) {
+            return self::PLACEHOLDER;
+        }
+
+        return '$' . number_format((float) $value, 0, ',', '.');
     }
 
     private function text(string $value): string

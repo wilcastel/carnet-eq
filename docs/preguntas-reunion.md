@@ -170,6 +170,7 @@ Esta guía convierte el MVP actual en decisiones verificables para dejar el plug
 - [ ] Métricas y tablero operativo conforme a la sección 3.4.
 - [ ] Plantillas diferenciadas por producto, si la sección 2.2 lo requiere.
 - [ ] Automatización de empaquetado/release para generar el ZIP con dependencias de producción.
+- [ ] Ajustar el tamaño físico del carnet al estándar de tarjeta ISO/IEC 7810 ID-1 (85.60 x 53.98mm). La plantilla entregada por el cliente mide 84.14 x 50.00mm (1.46mm más angosta, 3.98mm más corta que el estándar); se mantiene tal cual mientras no haya decisión del cliente/diseño. El PDF ya usa dos páginas (portada + reverso con datos), que es el formato natural para impresión a doble cara de un carnet de tamaño estándar — de aprobarse el ajuste, solo cambia el tamaño de página y se recalibran las coordenadas de los 8 campos, no la arquitectura.
 
 ---
 

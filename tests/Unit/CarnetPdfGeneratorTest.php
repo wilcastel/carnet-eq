@@ -126,11 +126,19 @@ final class CarnetPdfGeneratorTest extends TestCase
         self::assertStringContainsString('VILLAMIZAR ACEVEDO EMILIANO', $text);
     }
 
+    /**
+     * Split into two checks rather than one contiguous substring: the
+     * two-column layout wraps this name onto a second line, and pdftotext
+     * -layout interleaves same-row text from the right column in between —
+     * asserting word presence, not exact line reconstruction, is what
+     * actually matters here.
+     */
     public function testItPrintsTheHolderNameFromTheNewApiField(): void
     {
         $text = $this->extractText($this->generator()->generate('1094290592', $this->sampleRecord()));
 
-        self::assertStringContainsString('GLORIA INES DUARTE DE ACEVEDO', $text);
+        self::assertStringContainsString('GLORIA INES DUARTE', $text);
+        self::assertStringContainsString('ACEVEDO', $text);
     }
 
     public function testItDoesNotPrintTheHolderDocument(): void
@@ -166,5 +174,34 @@ final class CarnetPdfGeneratorTest extends TestCase
 
         self::assertStringContainsString('PENDIENTE DE CONFIRMACIÓN', $text);
         self::assertStringNotContainsString('$6.000.000', $text);
+    }
+
+    /**
+     * The client compared the output against the original two-column mockup
+     * and flagged the missing institutional header (company name + La
+     * Equidad's own NIT — a static line, unrelated to the insured's data).
+     */
+    public function testItPrintsTheCompanyHeader(): void
+    {
+        $text = $this->extractText($this->generator()->generate('1094290592', $this->sampleRecord()));
+
+        self::assertStringContainsString('LA EQUIDAD SEGUROS DE VIDA O.', $text);
+        self::assertStringContainsString('NIT. 830.008.686-1', $text);
+    }
+
+    /**
+     * The Tomador box must be tall enough for a long name to wrap onto a
+     * second line instead of being clipped by TCPDF (no auto page break on
+     * this fixed-size card). Regression guard for the two-column relayout.
+     */
+    public function testItAccommodatesALongHolderNameAcrossTwoLinesWithoutClipping(): void
+    {
+        $record = $this->sampleRecord();
+        $record['NOMBRE_TOMADOR'] = 'MARIA FERNANDA DEL SOCORRO RODRIGUEZ VILLAMIZAR';
+
+        $text = $this->extractText($this->generator()->generate('1094290592', $record));
+
+        self::assertStringContainsString('MARIA FERNANDA', $text);
+        self::assertStringContainsString('RODRIGUEZ VILLAMIZAR', $text);
     }
 }

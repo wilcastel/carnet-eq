@@ -55,16 +55,29 @@ final class CarnetPdfGenerator
         $template = $pdf->importPage(2);
         $pdf->useTemplate($template, 0, 0, self::PAGE_WIDTH, self::PAGE_HEIGHT);
 
-        // The back of the new template ships with no baked-in labels (unlike
-        // the previous artwork), so every field prints its own "Label: value".
-        $this->field($pdf, 6, 58, 104, 9, 'Póliza: ' . $this->value($record, 'POLIZA'), 6);
-        $this->field($pdf, 116, 58, 108, 9, 'Documento: ' . $document, 6);
-        $this->field($pdf, 6, 69, 218, 9, 'Tomador: ' . $this->valueOrPlaceholder($record, 'NOMBRE_TOMADOR'), 6);
-        $this->field($pdf, 6, 80, 66, 9, 'Orden: ' . $this->value($record, 'ORDEN'), 6);
-        $this->field($pdf, 76, 80, 74, 9, 'Vigencia: ' . $this->date($record['FECHA_INICIO'] ?? null), 6);
-        $this->field($pdf, 154, 80, 70, 9, 'Hasta: ' . $this->date($record['FECHA_FIN'] ?? null), 6);
-        $this->field($pdf, 6, 91, 218, 9, 'Asegurado: ' . $insured, 6);
-        $this->field($pdf, 6, 104, 218, 16, 'V/r asegurado por gastos médicos: ' . $this->currency($record['VAL_GASTOS_MED'] ?? null), 6);
+        // Institutional header (static, not from the API record): the company
+        // name and La Equidad's own NIT, printed above the green banner in
+        // the previously-blank top-left corner. Flagged as missing by the
+        // client when comparing against the original two-column mockup.
+        // Width capped at 135pt: measured where the artwork's top-right green
+        // corner starts (~146.4pt) so the white field box never paints over it.
+        $this->field($pdf, 6, 4, 135, 8, 'LA EQUIDAD SEGUROS DE VIDA O.', 6);
+        $this->field($pdf, 6, 13, 135, 8, 'NIT. 830.008.686-1', 6);
+
+        // Two-column layout matching the client's original mockup: policy
+        // data on the left (wider, since Tomador/Asegurado names run long),
+        // the queried document and dates on the right. Deliberately still
+        // labeled "Documento" rather than "NIT" for the per-record field —
+        // see the note on documentLabel() below.
+        $this->field($pdf, 6, 58, 140, 9, 'Póliza: ' . $this->value($record, 'POLIZA'), 6);
+        $this->field($pdf, 6, 69, 140, 16, 'Tomador: ' . $this->valueOrPlaceholder($record, 'NOMBRE_TOMADOR'), 6);
+        $this->field($pdf, 6, 87, 140, 9, 'Asegurado: ' . $insured, 6);
+        $this->field($pdf, 6, 98, 140, 16, 'V/r asegurado por gastos médicos: ' . $this->currency($record['VAL_GASTOS_MED'] ?? null), 6);
+
+        $this->field($pdf, 150, 58, 78, 9, $this->documentLabel() . ': ' . $document, 6);
+        $this->field($pdf, 150, 69, 78, 9, 'Orden: ' . $this->value($record, 'ORDEN'), 6);
+        $this->field($pdf, 150, 80, 78, 9, 'Vigencia: ' . $this->date($record['FECHA_INICIO'] ?? null), 6);
+        $this->field($pdf, 150, 91, 78, 9, 'Hasta: ' . $this->date($record['FECHA_FIN'] ?? null), 6);
 
         return $pdf->Output('', 'S');
     }
@@ -81,6 +94,19 @@ final class CarnetPdfGenerator
         // a template imported via FPDI on this small a page — it silently drops
         // every field drawn before the last one. See CarnetPdfGeneratorTest.
         $pdf->MultiCell($width, $height - 2, $this->text($value), 0, 'L');
+    }
+
+    /**
+     * The original design mockup labeled the queried document "NIT", but the
+     * API never indicates whether a given document is a NIT (tax ID, legal
+     * entities) or a CC (cédula de ciudadanía, natural persons) — there is no
+     * type field in the response. Printing "NIT" on every carnet would
+     * misrepresent a personal cédula, so this stays the generic "Documento"
+     * label until the client can supply a document-type field to key off of.
+     */
+    private function documentLabel(): string
+    {
+        return 'Documento';
     }
 
     /** @param array<string, mixed> $record */

@@ -34,6 +34,7 @@ Esta guía convierte el MVP actual en decisiones verificables para dejar el plug
 - **Comportamiento actual / supuesto temporal:** desarrollo consume la API por VPN. No existe una ruta ni una URL de producción confirmada.
 - **Decisión requerida:** mecanismo, URL/base path, DNS si aplica, puertos, allowlist, responsable de soporte y procedimiento de diagnóstico.
 - **Dueño o evidencia solicitada:** Infraestructura/Seguridad de La Equidad; diagrama de red, prueba desde el host de producción y datos de contacto para incidentes.
+- **Evidencia de prueba (2026-09-16):** se instaló el plugin en un servidor de la propia infraestructura de la empresa y se configuró `wp-config.php` con las mismas credenciales y `CARNET_API_BASE_URL` de desarrollo (`http://192.168.243.194:9050`, IP privada solo alcanzable por la VPN de desarrollo). La consulta falló con `UpstreamException` (transport failure) — confirma que esa URL no es alcanzable desde la red de la empresa y que aún no se cuenta con la URL/endpoint real de producción. Pendiente: solicitar al cliente la URL interna real del servicio y confirmar si las credenciales cambian.
 
 ### 1.2 Credenciales, `consumer`, `cod_pla` y ciclo de vida del token
 

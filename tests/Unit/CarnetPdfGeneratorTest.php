@@ -63,6 +63,28 @@ final class CarnetPdfGeneratorTest extends TestCase
      */
     private function pageCount(string $pdf): int
     {
+        return (int) $this->pdfinfo($pdf)['Pages'];
+    }
+
+    /**
+     * @return array{0: float, 1: float} sheet width/height in pt, as reported by poppler's pdfinfo.
+     */
+    private function pageSizePt(string $pdf): array
+    {
+        $size = $this->pdfinfo($pdf)['Page size'];
+
+        if (preg_match('/^([\d.]+) x ([\d.]+) pts/', $size, $matches) !== 1) {
+            self::fail('pdfinfo did not report a parseable page size.');
+        }
+
+        return [(float) $matches[1], (float) $matches[2]];
+    }
+
+    /**
+     * @return array<string, string> pdfinfo's "Key: value" output, keyed by field name.
+     */
+    private function pdfinfo(string $pdf): array
+    {
         $pdfinfo = trim((string) shell_exec('command -v pdfinfo'));
         if ($pdfinfo === '') {
             self::markTestSkipped('pdfinfo (poppler-utils) is not available in this environment.');
@@ -74,11 +96,18 @@ final class CarnetPdfGeneratorTest extends TestCase
         $output = (string) shell_exec(sprintf('%s %s 2>/dev/null', escapeshellcmd($pdfinfo), escapeshellarg($path)));
         unlink($path);
 
-        if (preg_match('/^Pages:\s*(\d+)/m', $output, $matches) !== 1) {
+        $fields = [];
+        foreach (explode("\n", $output) as $line) {
+            if (preg_match('/^([A-Za-z ]+?):\s+(.*)$/', $line, $matches) === 1) {
+                $fields[$matches[1]] = $matches[2];
+            }
+        }
+
+        if (! isset($fields['Pages'])) {
             self::fail('pdfinfo did not report a page count.');
         }
 
-        return (int) $matches[1];
+        return $fields;
     }
 
     public function testItGeneratesPdfBytesFromTheFreshRecord(): void
@@ -90,16 +119,20 @@ final class CarnetPdfGeneratorTest extends TestCase
     }
 
     /**
-     * The output must keep both sides of the approved artwork: the front
-     * cover (page 1 of the template, untouched) followed by the data-filled
-     * back (page 2). Downloading only the back was flagged as incomplete
-     * after the client reviewed a single-page carnet.
+     * A test print on plain paper (no printer settings changed) showed each
+     * card face landing on its own physical sheet, at (0,0) with no margin —
+     * because the output was 2 pages sized to the card itself. The output is
+     * now one Letter-size (612x792pt / 215.9x279.4mm) sheet with both faces
+     * placed inside a safe margin, so a normal print puts both on one page.
      */
-    public function testItOutputsTheCoverPageFollowedByTheDataPage(): void
+    public function testItOutputsBothCardFacesOnASingleLetterSheet(): void
     {
         $pdf = $this->generator()->generate('1094290592', $this->sampleRecord());
 
-        self::assertSame(2, $this->pageCount($pdf));
+        self::assertSame(1, $this->pageCount($pdf));
+        [$width, $height] = $this->pageSizePt($pdf);
+        self::assertEqualsWithDelta(612.0, $width, 0.5, 'Sheet width should be US Letter.');
+        self::assertEqualsWithDelta(792.0, $height, 0.5, 'Sheet height should be US Letter.');
     }
 
     public function testItRejectsARecordWithoutAnInsuredName(): void
